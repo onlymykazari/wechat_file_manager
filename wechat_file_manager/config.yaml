@@ -1,6 +1,16 @@
 paths:
   storage: ~/Documents/WeChatStorage
-  wechat: ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/
+sources:
+- name: wechat4
+  root: ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/
+  target_folders:
+  - msg/file
+  - msg/video
+- name: wechat3
+  root: ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/
+  target_folders:
+  - Message/MessageTemp
+  min_file_size: 0
 settings:
   min_file_size: 1
   preserve_originals: true
@@ -8,8 +18,5 @@ settings:
   - pic_thumb
   - _thumb
   - .DS_Store
-  target_folders:
-  - msg/file
-  - msg/video
 state:
   last_run: null

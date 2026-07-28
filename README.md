@@ -2,7 +2,7 @@
 
 一个用于 MacOS 系统的微信文件管理工具，通过创建集中存储和符号链接来实现文件去重和空间节省。
 
-> 已适配微信 Mac 4.x 版本（数据目录 `xwechat_files`）。3.x 及更早版本请自行修改配置中的 `wechat` 路径和 `target_folders`。
+> 同时支持微信 Mac 4.x（数据目录 `xwechat_files`）和 3.x（数据目录 `2.0b4.0.9/<账号hash>/Message/MessageTemp`），通过配置中的 `sources` 多数据源机制实现，不存在的源会自动跳过。
 
 ## 主要功能
 
@@ -25,23 +25,32 @@ pip install git+https://github.com/zhoupc/wechat_file_manager.git
 
 ```yaml 
 paths:
-  storage: ~/Documents/WeChatStorage  # 集中存储路径
-  wechat: ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/  # 微信 4.x 文件路径，其下每个 wxid_xxx 目录对应一个登录过的账号
+  storage: ~/Documents/WeChatStorage  # 集中存储路径，各数据源存到 storage/<name>/ 子目录下
+sources:
+- name: wechat4                       # 微信 4.x，每个 wxid_xxx 目录对应一个账号
+  root: ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/
+  target_folders:
+  - msg/file                          # 聊天中收发的文件
+  - msg/video                         # 聊天中收发的视频
+- name: wechat3                       # 微信 3.x 遗留数据，每个账号hash目录对应一个账号
+  root: ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/
+  target_folders:
+  - Message/MessageTemp               # 递归扫描其下所有会话的 Image/Video/Audio/File
+  min_file_size: 0                    # 单源覆盖全局阈值（3.x 残留文件普遍较小）
 settings:
-  min_file_size: 1  # 最小文件大小，单位为MB
+  min_file_size: 1  # 全局最小文件大小，单位为MB，可被各源的同名字段覆盖
   preserve_originals: true # 是否保留原始文件，如果为false，会将文件替换为符号链接
   skip_patterns:    # 跳过模式，用于跳过某些文件夹或文件
   - pic_thumb
   - _thumb
   - .DS_Store
-  target_folders:   # 只对以下文件夹进行管理（相对于每个账号目录）
-  - msg/file        # 聊天中收发的文件
-  - msg/video       # 聊天中收发的视频
 state:  
   last_run: null    # 上次运行时间，每次只处理该时间之后修改的文件
 ```
 
-> 注意：微信 4.x 中聊天图片存放在 `msg/attach` 下，且已被加密为 `.dat` 格式，直接复制出来无法查看，因此默认不处理图片。
+> 旧版单源配置（`paths.wechat` + `settings.target_folders`）仍然兼容，会被自动转换为单个数据源。
+>
+> 注意：微信 4.x 中聊天图片存放在 `msg/attach` 下，且已被加密为 `.dat` 格式，直接复制出来无法查看，因此默认不处理 4.x 图片；3.x 的图片/视频/语音是明文的，会正常处理。
 
 2. 运行 `wfm run` 命令开始文件管理
 
