@@ -32,6 +32,11 @@ sources:
   target_folders:
   - msg/file                          # 聊天中收发的文件
   - msg/video                         # 聊天中收发的视频
+- name: wechat4-migrate               # 从 3.x 迁移到 4.x 的明文文档（check.txt 为迁移清单，在 p/ 上层，不会被扫到）
+  root: ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/
+  target_folders:
+  - business/migrate/local/p
+  min_file_size: 0                    # 迁移文档普遍较小
 - name: wechat3                       # 微信 3.x 遗留数据，每个账号hash目录对应一个账号
   root: ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/
   target_folders:

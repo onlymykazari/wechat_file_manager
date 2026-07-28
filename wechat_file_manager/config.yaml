@@ -6,6 +6,11 @@ sources:
   target_folders:
   - msg/file
   - msg/video
+- name: wechat4-migrate
+  root: ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/
+  target_folders:
+  - business/migrate/local/p
+  min_file_size: 0
 - name: wechat3
   root: ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/
   target_folders:
