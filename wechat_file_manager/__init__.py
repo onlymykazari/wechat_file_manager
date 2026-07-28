@@ -1,4 +1,5 @@
 import os
+import re
 import hashlib
 from pathlib import Path
 import shutil
@@ -7,7 +8,7 @@ import yaml
 from datetime import datetime
 import sqlite3
 from typing import List, Tuple
-from tqdm import tqdm  # Add this import at the top
+from tqdm import tqdm
 import argparse
 
 def wfm_init():
@@ -18,10 +19,15 @@ def wfm_init():
     if not config_path.exists():
         shutil.copy2(default_config_path, config_path)
         print(f"Created configuration file at: {config_path}")
+    else:
+        print(f"Configuration file already exists at: {config_path}")
     
     # Load config to create storage directory
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
+    storage_path = Path(config['paths']['storage']).expanduser()
+    storage_path.mkdir(parents=True, exist_ok=True)
+    print(f"Storage directory ready at: {storage_path}")
 
 class WeChatFileManager:
     """
@@ -49,8 +55,8 @@ class WeChatFileManager:
         self.last_run = self.config.get('state', {}).get('last_run')
         self.min_file_size = self.config['settings'].get('min_file_size', 0) * 1024 * 1024
         self.skip_patterns = self.config['settings'].get('skip_patterns', [])
-        self.preserve_originals = self.config['settings'].get('preserve_originals', False)
-        self.target_folders = self.config['settings'].get('target_folders', ['FileStorage', 'Image', 'Video'])
+        self.preserve_originals = self.config['settings'].get('preserve_originals', True)
+        self.target_folders = self.config['settings'].get('target_folders', ['msg/file', 'msg/video'])
         self.init_database()
         self.file_hashes = defaultdict(list)
         self.db_conn = sqlite3.connect(self.db_path)  # Create persistent connection
@@ -90,31 +96,24 @@ class WeChatFileManager:
         )
         self.db_conn.commit()  # Commit changes periodically
 
-    def should_process_directory(self, dir_path):
-        """
-        Check if a directory needs to be processed based on its modification time.
-
-        Args:
-            dir_path (Path): Directory path to check
-
-        Returns:
-            bool: True if directory should be processed, False otherwise
-        """
-        if not self.last_run:
-            return True
-        try:
-            dir_mtime = datetime.fromtimestamp(dir_path.stat().st_mtime)
-            last_run_time = datetime.fromisoformat(self.last_run)
-            return dir_mtime > last_run_time
-        except:
-            return True
-
     def should_process_file(self, file_path):
         try:
+            stat = file_path.stat()
+
             # Check file size requirement
-            file_size = file_path.stat().st_size
-            if file_size < self.min_file_size:
+            if stat.st_size < self.min_file_size:
                 return False
+
+            # Only process files modified after the last run.
+            # WeChat 4.x stores files in per-month subfolders, so directory
+            # mtime is unreliable; compare against each file's mtime instead.
+            if self.last_run:
+                try:
+                    last_run_time = datetime.fromisoformat(self.last_run)
+                    if datetime.fromtimestamp(stat.st_mtime) <= last_run_time:
+                        return False
+                except ValueError:
+                    pass
 
             # Skip files matching any of the patterns
             for pattern in self.skip_patterns:
@@ -122,34 +121,37 @@ class WeChatFileManager:
                     return False
 
             return True
-        except:
-            return True
+        except OSError:
+            return False
 
     def clean_filename(self, filename: str, file_hash: str) -> str:
         """Remove duplicate indicators and append hash prefix to filename"""
-        import re
         base_name = re.sub(r' \(\d+\)(?=\.[^.]+$)', '', filename)
-        name_parts = base_name.rsplit('.', 1)
-        return f"{name_parts[0]}_{file_hash[:5]}.{name_parts[1]}"
+        stem, dot, ext = base_name.rpartition('.')
+        if not stem:
+            return f"{base_name}_{file_hash[:5]}"
+        return f"{stem}_{file_hash[:5]}.{ext}"
 
     def process_files(self):
         self.storage_path.mkdir(parents=True, exist_ok=True)
-        
+
+        if not self.wechat_path.exists():
+            print(f"WeChat path not found: {self.wechat_path}")
+            print("Please check the 'wechat' path in your configuration file.")
+            return
+
         # Get list of valid user directories first
         user_dirs = [d for d in self.wechat_path.iterdir() if d.is_dir()]
         
         # Create progress bar for user directories
         for user_dir in tqdm(user_dirs, desc="Processing WeChat users"):
-            if not self.should_process_directory(user_dir):
-                continue
-            
             for target in self.target_folders:
                 target_dir = user_dir / target
-                if not target_dir.exists() or not self.should_process_directory(target_dir):
+                if not target_dir.exists():
                     continue
                 
                 storage_target_dir = self.storage_path / target
-                storage_target_dir.mkdir(exist_ok=True)
+                storage_target_dir.mkdir(parents=True, exist_ok=True)
                 
                 for file_path in target_dir.rglob('*'):
                     if file_path.is_file() and not file_path.is_symlink() and self.should_process_file(file_path):
@@ -160,7 +162,7 @@ class WeChatFileManager:
                                                     (file_hash, str(self.storage_path) + '%'))
                         stored_file = cursor.fetchone()
                         
-                        if stored_file:
+                        if stored_file and Path(stored_file[0]).exists():
                             new_path = Path(stored_file[0])
                         else:
                             clean_name = self.clean_filename(file_path.name, file_hash)
@@ -171,6 +173,8 @@ class WeChatFileManager:
                                 shutil.copy2(str(file_path), str(new_path))
                             else:
                                 shutil.move(str(file_path), str(new_path))
+                            # Record the storage copy so future duplicates are detected
+                            self.save_file_hash(file_hash, new_path)
                         
                         if not self.preserve_originals:
                             if file_path.exists():
@@ -185,7 +189,7 @@ class WeChatFileManager:
         self.config['state']['last_run'] = datetime.now().isoformat()
         
         with open(self.config_path, 'w') as f:
-            yaml.safe_dump(self.config, f)
+            yaml.safe_dump(self.config, f, allow_unicode=True)
 
     def calculate_md5(self, file_path: Path) -> str:
         """Calculate MD5 hash of a file."""

@@ -1,0 +1,15 @@
+paths:
+  storage: ~/Documents/WeChatStorage
+  wechat: ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/
+settings:
+  min_file_size: 1
+  preserve_originals: true
+  skip_patterns:
+  - pic_thumb
+  - _thumb
+  - .DS_Store
+  target_folders:
+  - msg/file
+  - msg/video
+state:
+  last_run: null

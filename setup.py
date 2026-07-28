@@ -9,8 +9,9 @@ setup(
         "tqdm",
     ],
     package_data={
-        "": ["config.yaml"],
+        "wechat_file_manager": ["config.yaml"],
     },
+    include_package_data=True,
     entry_points={
         "console_scripts": [
             "wechat-file-manager=wechat_file_manager:main",
